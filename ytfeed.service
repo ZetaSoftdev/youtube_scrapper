@@ -1,0 +1,15 @@
+[Unit]
+Description=YouTube Intelligence Feed
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/youtube_scrapper
+EnvironmentFile=/root/youtube_scrapper/.env
+ExecStart=/root/youtube_scrapper/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

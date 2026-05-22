@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube Intelligence Feed</title>
+  <meta name="description" content="Automatically track YouTube channels and feed insights into Google NotebookLM — organized by topic." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════ SIDEBAR ═══════════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">YT Feed</span>
+    </div>
+    <div class="nlm-status" id="nlmStatus" title="NotebookLM connection status">
+      <span class="status-dot"></span>
+      <span class="status-label">Checking...</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <button class="nav-btn active" id="navDashboard" onclick="showView('dashboard')">
+      <span class="nav-icon">◈</span> Dashboard
+    </button>
+    <button class="nav-btn" id="navActivity" onclick="showView('activity')">
+      <span class="nav-icon">◉</span> Activity Log
+    </button>
+  </nav>
+
+  <div class="sidebar-section-title">TOPICS</div>
+
+  <div class="topics-list" id="topicsList">
+    <div class="skeleton-list">
+      <div class="skeleton-item"></div>
+      <div class="skeleton-item"></div>
+    </div>
+  </div>
+
+  <button class="btn-new-topic" id="btnNewTopic" onclick="openTopicModal()">
+    <span>+</span> New Topic
+  </button>
+</aside>
+
+<!-- ═══════════════════════ MAIN CONTENT ═══════════════════════ -->
+<main class="main-content">
+
+  <!-- ── Dashboard View ── -->
+  <div id="viewDashboard" class="view active">
+
+    <!-- Empty state (no topic selected) -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">🎯</div>
+      <h2>Select or create a Topic</h2>
+      <p>A topic groups YouTube channels that feed into one NotebookLM notebook.<br/>
+         Create your first topic to get started.</p>
+      <button class="btn-primary" onclick="openTopicModal()">Create your first topic</button>
+    </div>
+
+    <!-- Topic dashboard (shown when topic selected) -->
+    <div class="topic-dashboard" id="topicDashboard" style="display:none">
+
+      <div class="topic-header">
+        <div class="topic-header-left">
+          <h1 id="topicTitle">Topic Name</h1>
+          <span class="topic-meta" id="topicMeta">0 channels · NotebookLM linked</span>
+        </div>
+        <div class="topic-header-actions">
+          <button class="btn-secondary" id="btnAddChannel" onclick="openSearchPanel()">
+            + Add Channel
+          </button>
+          <button class="btn-danger-soft" onclick="deleteTopic()">Delete Topic</button>
+        </div>
+      </div>
+
+      <!-- Channels grid -->
+      <div class="section-title">Tracked Channels</div>
+      <div class="channels-grid" id="channelsGrid">
+        <div class="no-channels">
+          <p>No channels yet.<br/>Click <strong>+ Add Channel</strong> to start tracking.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Activity View ── -->
+  <div id="viewActivity" class="view">
+    <div class="page-header">
+      <h1>Activity Log</h1>
+      <p>All videos automatically added to NotebookLM</p>
+    </div>
+    <div class="activity-list" id="activityList">
+      <div class="loading-spinner"></div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ═══════════════════════ MODALS ═══════════════════════ -->
+
+<!-- New Topic Modal -->
+<div class="modal-backdrop" id="topicModal" onclick="closeModal('topicModal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Create New Topic</h2>
+      <button class="modal-close" onclick="closeModal('topicModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="topicName">Topic Name</label>
+        <input type="text" id="topicName" placeholder="e.g. B2B Sales Insights" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label for="topicDesc">Description <span class="optional">(optional)</span></label>
+        <input type="text" id="topicDesc" placeholder="What is this topic about?" autocomplete="off" />
+      </div>
+      <div class="modal-info">
+        <span class="info-icon">ℹ</span>
+        A NotebookLM notebook will be automatically created for this topic.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('topicModal')">Cancel</button>
+      <button class="btn-primary" id="btnCreateTopic" onclick="createTopic()">Create Topic</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ SEARCH PANEL (slide-in) ═══════════════════════ -->
+<div class="panel-backdrop" id="searchPanelBackdrop" onclick="closeSearchPanel()"></div>
+<div class="search-panel" id="searchPanel">
+
+  <div class="panel-header">
+    <h2>Add Channel</h2>
+    <button class="modal-close" onclick="closeSearchPanel()">✕</button>
+  </div>
+
+  <!-- Search input -->
+  <div class="search-tabs">
+    <button class="tab-btn active" id="tabSearch" onclick="switchTab('search')">Search by Keyword</button>
+    <button class="tab-btn" id="tabUrl" onclick="switchTab('url')">Add by URL</button>
+  </div>
+
+  <div id="tabSearchContent">
+    <div class="search-bar-wrap">
+      <input type="text" id="channelSearchInput" placeholder="e.g. SaaS growth, B2B sales, startup CTO..."
+             autocomplete="off" onkeydown="if(event.key==='Enter') searchChannels()" />
+      <div class="search-filters">
+        <label>Min. Subscribers</label>
+        <select id="minSubsFilter">
+          <option value="0">Any</option>
+          <option value="10000">10K+</option>
+          <option value="100000">100K+</option>
+          <option value="500000">500K+</option>
+          <option value="1000000">1M+</option>
+        </select>
+        <label>Results</label>
+        <select id="maxResultsFilter">
+          <option value="8">8</option>
+          <option value="15">15</option>
+          <option value="25">25</option>
+        </select>
+      </div>
+      <button class="btn-primary" onclick="searchChannels()" id="btnSearch">Search</button>
+    </div>
+
+    <div id="searchResults" class="search-results"></div>
+    <div id="suggestionsSection" class="suggestions-section" style="display:none">
+      <div class="section-title">You might also want to track</div>
+      <div id="suggestionsList" class="search-results suggestions-grid"></div>
+    </div>
+  </div>
+
+  <div id="tabUrlContent" style="display:none">
+    <div class="search-bar-wrap">
+      <input type="text" id="channelUrlInput"
+             placeholder="https://www.youtube.com/@channelname"
+             autocomplete="off" />
+      <button class="btn-primary" onclick="resolveChannelUrl()" id="btnResolve">Resolve</button>
+    </div>
+    <div id="urlResult" class="search-results"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ CHANNEL CONFIG SLIDER ═══════════════════════ -->
+<div class="panel-backdrop" id="configPanelBackdrop" onclick="closeConfigPanel()"></div>
+<div class="config-panel" id="configPanel">
+  <div class="panel-header">
+    <div class="config-channel-info">
+      <img id="configThumb" src="" alt="" class="config-thumb" />
+      <div>
+        <h3 id="configChannelName">Channel Name</h3>
+        <span id="configSubscribers" class="config-subs"></span>
+      </div>
+    </div>
+    <button class="modal-close" onclick="closeConfigPanel()">✕</button>
+  </div>
+
+  <div class="config-body">
+    <div class="config-section">
+      <label class="config-label">How many recent videos to fetch now?</label>
+      <div class="slider-wrap">
+        <input type="range" id="videoCountSlider" min="1" max="50" value="10"
+               oninput="updateSliderValue(this.value)" />
+        <span class="slider-value" id="sliderValueDisplay">10</span>
+      </div>
+      <div class="slider-hints">
+        <span>1</span><span>50</span>
+      </div>
+    </div>
+
+    <div class="config-section">
+      <label class="config-label">Sort by</label>
+      <div class="sort-toggle">
+        <button class="sort-btn active" id="sortDate" onclick="selectSort('date')">
+          🕐 Recently Uploaded
+        </button>
+        <button class="sort-btn" id="sortViews" onclick="selectSort('viewCount')">
+          🔥 Most Popular
+        </button>
+      </div>
+    </div>
+
+    <div class="config-preview">
+      <div class="config-preview-label">
+        Will fetch <strong id="previewCount">10</strong> videos sorted by <strong id="previewSort">recently uploaded</strong>
+        and push them to your NotebookLM notebook.
+      </div>
+    </div>
+  </div>
+
+  <div class="config-footer">
+    <button class="btn-secondary" onclick="closeConfigPanel()">Cancel</button>
+    <button class="btn-primary" id="btnConfirmAdd" onclick="confirmAddChannel()">
+      <span id="btnConfirmText">Add Channel & Fetch</span>
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TOAST ═══════════════════════ -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
