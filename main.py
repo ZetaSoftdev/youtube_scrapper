@@ -275,6 +275,25 @@ async def get_tracked_videos(channel_db_id: int):
 
 
 
+# ─── GitHub CI/CD Webhook ─────────────────────────────────────────────────────
+
+@app.post("/webhook/deploy")
+async def github_deploy(request: Request, background_tasks: BackgroundTasks):
+    """Auto-pull from GitHub on push events."""
+    # Simple secret token to prevent random people from restarting your server
+    token = request.query_params.get("token")
+    if token != "deploy_me_123":
+        return Response(status_code=403, content="Invalid token")
+        
+    def _run_deploy():
+        import subprocess
+        subprocess.run(["git", "pull", "origin", "main"], cwd="/root/youtube_scrapper")
+        subprocess.run(["systemctl", "restart", "ytfeed"])
+        
+    background_tasks.add_task(_run_deploy)
+    return {"status": "Deploy initiated"}
+
+
 # ─── PubSubHubbub Webhook ─────────────────────────────────────────────────────
 
 @app.get("/webhook/youtube")
