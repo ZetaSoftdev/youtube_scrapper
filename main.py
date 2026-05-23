@@ -241,7 +241,7 @@ async def recent_videos(limit: int = 50):
 # ─── Temporary Secure Credential Upload Route ─────────────────────────────────
 import shutil
 
-@app.post("/temp-upload-credentials")
+@app.post("/api/temp-upload-credentials")
 async def temp_upload_credentials(
     cookies: UploadFile = File(...),
     metadata: UploadFile = File(...),
