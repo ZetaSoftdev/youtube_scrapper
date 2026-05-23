@@ -5,7 +5,7 @@ All API routes + PubSubHubbub webhook handler.
 
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
@@ -236,6 +236,33 @@ async def activity_log(limit: int = 100):
 @app.get("/api/videos")
 async def recent_videos(limit: int = 50):
     return db.get_recent_videos(limit)
+
+
+# ─── Temporary Secure Credential Upload Route ─────────────────────────────────
+import shutil
+
+@app.post("/temp-upload-credentials")
+async def temp_upload_credentials(
+    cookies: UploadFile = File(...),
+    metadata: UploadFile = File(...),
+    token: str = None
+):
+    if token != "azeem_secret_upload_token_2026_xyz":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    target_dir = os.path.expanduser("~/.notebooklm-mcp-cli/profiles/default")
+    os.makedirs(target_dir, exist_ok=True)
+    
+    cookies_path = os.path.join(target_dir, "cookies.json")
+    metadata_path = os.path.join(target_dir, "metadata.json")
+    
+    with open(cookies_path, "wb") as buffer:
+        shutil.copyfileobj(cookies.file, buffer)
+        
+    with open(metadata_path, "wb") as buffer:
+        shutil.copyfileobj(metadata.file, buffer)
+        
+    return {"status": "success", "message": "Credentials uploaded successfully"}
 
 
 # ─── PubSubHubbub Webhook ─────────────────────────────────────────────────────
