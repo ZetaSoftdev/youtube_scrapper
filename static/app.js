@@ -167,7 +167,7 @@ function renderChannels() {
     return;
   }
   grid.innerHTML = state.channels.map(c => `
-    <div class="channel-card" id="channelCard_${c.id}">
+    <div class="channel-card" id="channelCard_${c.id}" style="cursor:pointer" onclick="openConfigPanel(${JSON.stringify(c).replace(/"/g, "&quot;")})">
       <div class="channel-card-top">
         <img class="channel-thumb" src="${c.thumbnail_url || ''}" alt=""
              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%23333%22/><text x=%2250%%22 y=%2255%%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2218%22>▶</text></svg>'" />
@@ -186,8 +186,7 @@ function renderChannels() {
         </span>
       </div>
       <div class="channel-card-actions">
-        <button class="btn-fetch-sm" onclick="openFetchDialog(${c.id}, '${esc(c.channel_name)}')">↻ Fetch More</button>
-        <button class="btn-remove-sm" onclick="removeChannel(${c.id}, '${esc(c.channel_name)}')">✕</button>
+        <button class="btn-remove-sm" onclick="event.stopPropagation(); removeChannel(${c.id}, '${esc(c.channel_name)}')">✕ Remove</button>
       </div>
     </div>
   `).join("");
@@ -283,7 +282,7 @@ function renderSearchResults(results, container) {
         </div>
         ${isAdded
           ? `<span class="result-add added-btn">✓ Added</span>`
-          : `<button class="result-add" onclick="openConfigPanel(${JSON.stringify(ch).replace(/"/g, "&quot;")})">Add</button>`
+          : `<button class="result-add" onclick="openFetchPreview(${JSON.stringify(ch).replace(/"/g, "&quot;")}, true)">Select Videos...</button>`
         }
       </div>
     `;
@@ -477,3 +476,177 @@ function timeAgo(iso) {
   if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
   return Math.floor(diff / 86400) + "d ago";
 }
+
+// ─── Channel Detail View ─────────────────────────────────────────────────────
+async function openChannelDetail(channelDbId, name) {
+  const ch = state.channels.find(c => c.id === channelDbId);
+  if (!ch) return;
+  state.activeChannel = ch;
+  
+  document.getElementById("topicChannelsView").style.display = "none";
+  document.getElementById("channelDetailView").style.display = "block";
+  document.getElementById("detailChannelName").textContent = name;
+  
+  const grid = document.getElementById("detailVideosGrid");
+  grid.innerHTML = `<div class="loading-spinner"></div>`;
+  
+  try {
+    const videos = await api("GET", `/api/channels/${channelDbId}/videos`);
+    document.getElementById("detailChannelMeta").textContent = `${videos.length} tracked videos`;
+    
+    if (videos.length === 0) {
+      grid.innerHTML = `<div style="padding: 20px; color: var(--text3)">No videos tracked yet.</div>`;
+      return;
+    }
+    
+    grid.innerHTML = videos.map(v => `
+      <div class="video-card">
+        <img class="video-thumb" src="https://i.ytimg.com/vi/${v.video_id}/mqdefault.jpg" onerror="this.style.background='#222'" />
+        <span class="video-status ${v.pushed_to_nlm ? 'pushed' : 'tracked'}">${v.pushed_to_nlm ? 'NLM ✓' : 'Tracked'}</span>
+        <div class="video-info">
+          <div class="video-title" title="${esc(v.title)}">${esc(v.title)}</div>
+          <div class="video-meta">${timeAgo(v.created_at)}</div>
+        </div>
+      </div>
+    `).join("");
+  } catch(e) {
+    grid.innerHTML = `<div style="color:var(--error)">Failed to load videos</div>`;
+  }
+}
+
+function closeChannelDetail() {
+  document.getElementById("channelDetailView").style.display = "none";
+  document.getElementById("topicChannelsView").style.display = "block";
+  state.activeChannel = null;
+}
+
+// ─── Preview Fetch View ──────────────────────────────────────────────────────
+let previewState = {
+  isNew: true,
+  channelData: null,
+  videos: [],
+  selectedIds: new Set()
+};
+
+async function openFetchPreview(channelData, isNew = true) {
+  previewState.isNew = isNew;
+  previewState.channelData = channelData;
+  previewState.selectedIds.clear();
+  previewState.videos = [];
+  
+  if(isNew) closeSearchPanel();
+  document.getElementById("topicChannelsView").style.display = "none";
+  document.getElementById("channelDetailView").style.display = "none";
+  document.getElementById("previewFetchView").style.display = "block";
+  
+  document.getElementById("previewTitle").textContent = isNew ? "Add Channel & Push Videos" : "Fetch More Videos";
+  document.getElementById("previewChannelName").textContent = channelData.channel_name;
+  
+  await reloadPreview();
+}
+
+function closePreviewFetch() {
+  document.getElementById("previewFetchView").style.display = "none";
+  if (previewState.isNew) {
+    document.getElementById("topicChannelsView").style.display = "block";
+  } else {
+    document.getElementById("channelDetailView").style.display = "block";
+  }
+}
+
+async function reloadPreview() {
+  const grid = document.getElementById("previewVideosGrid");
+  const count = document.getElementById("previewFetchCount")?.value || 25;
+  const sort = document.getElementById("previewSortBy").value;
+  
+  grid.innerHTML = `<div style="grid-column: 1/-1; padding: 40px; text-align: center;"><div class="loading-spinner" style="display:inline-block"></div><div style="margin-top:16px; color:var(--text2)">Fetching videos from YouTube...</div></div>`;
+  
+  try {
+    const chId = previewState.isNew ? previewState.channelData.channel_id : previewState.channelData.channel_id;
+    const videos = await api("GET", `/api/channels/preview?channel_id=${chId}&sort_by=${sort}`);
+    
+    // Default select all up to the chosen count
+    previewState.videos = videos.slice(0, parseInt(count));
+    previewState.selectedIds = new Set(previewState.videos.map(v => v.video_id));
+    
+    renderPreviewGrid();
+  } catch (e) {
+    grid.innerHTML = `<div style="grid-column: 1/-1; padding: 40px; text-align: center; color:var(--error)">Failed to fetch preview: ${e.message}</div>`;
+  }
+}
+
+function renderPreviewGrid() {
+  const grid = document.getElementById("previewVideosGrid");
+  document.getElementById("previewSelectedCount").textContent = `(${previewState.selectedIds.size} selected)`;
+  
+  if(previewState.videos.length === 0) {
+    grid.innerHTML = `<div style="color:var(--text3); padding:20px;">No videos found.</div>`;
+    return;
+  }
+  
+  grid.innerHTML = previewState.videos.map(v => {
+    const isSel = previewState.selectedIds.has(v.video_id);
+    return `
+      <div class="video-card ${isSel ? 'selected' : ''}" onclick="togglePreviewVideo('${v.video_id}')">
+        <input type="checkbox" class="video-checkbox" ${isSel ? 'checked' : ''} onclick="event.stopPropagation(); togglePreviewVideo('${v.video_id}')" />
+        <img class="video-thumb" src="${v.thumbnail || `https://i.ytimg.com/vi/${v.video_id}/mqdefault.jpg`}" onerror="this.style.background='#222'" />
+        <div class="video-info">
+          <div class="video-title" title="${esc(v.title)}">${esc(v.title)}</div>
+          <div class="video-meta">${v.published_at ? new Date(v.published_at).toLocaleDateString() : ''}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function togglePreviewVideo(id) {
+  if (previewState.selectedIds.has(id)) {
+    previewState.selectedIds.delete(id);
+  } else {
+    previewState.selectedIds.add(id);
+  }
+  renderPreviewGrid();
+}
+
+async function confirmPushVideos() {
+  if (previewState.selectedIds.size === 0) {
+    if(!confirm("You haven't selected any videos. Add channel without pushing anything?")) return;
+  }
+  
+  const btn = document.getElementById("btnConfirmPush");
+  btn.disabled = true;
+  btn.textContent = "Pushing to NotebookLM...";
+  
+  try {
+    const ch = previewState.channelData;
+    const sort = document.getElementById("previewSortBy").value;
+    
+    if (previewState.isNew) {
+      await api("POST", "/api/channels", {
+        topic_id: state.activeTopic.id,
+        channel_id: ch.channel_id,
+        channel_name: ch.channel_name,
+        thumbnail_url: ch.thumbnail_url || "",
+        subscriber_count: ch.subscriber_count || 0,
+        sort_by: sort,
+        video_ids: Array.from(previewState.selectedIds),
+        video_fetch_count: previewState.selectedIds.size
+      });
+      toast(`Channel added and videos pushed!`, "success");
+      await loadChannels();
+      await loadTopics();
+      closePreviewFetch();
+      loadSuggestions(ch.channel_id);
+    } else {
+      // Fetch more logic
+      toast("Not fully implemented yet for existing channels (requires backend manual fetch update)", "info");
+      closePreviewFetch();
+    }
+  } catch(e) {
+    toast("Failed: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Confirm & Push Selected";
+  }
+}
+

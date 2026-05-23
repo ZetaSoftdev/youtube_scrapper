@@ -235,6 +235,15 @@ def get_recent_videos(limit: int = 50) -> list:
         return [dict(r) for r in rows]
 
 
+def get_channel_videos(channel_db_id: int) -> list:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM videos WHERE channel_id = ? ORDER BY created_at DESC",
+            (channel_db_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 # ─── Activity Log ────────────────────────────────────────────────────────────
 
 def log_activity(topic_id: int, channel_name: str, video_title: str,

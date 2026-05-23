@@ -127,8 +127,9 @@ class ChannelAdd(BaseModel):
     channel_name: str
     thumbnail_url: Optional[str] = ""
     subscriber_count: Optional[int] = 0
-    video_fetch_count: int = 10
     sort_by: str = "date"  # "date" or "viewCount"
+    video_ids: Optional[list[str]] = None
+    video_fetch_count: int = 10  # fallback if video_ids not provided
 
 
 @app.get("/api/topics/{topic_id}/channels")
@@ -155,7 +156,16 @@ async def add_channel(body: ChannelAdd):
 
     # Fetch initial videos and push to NotebookLM
     if topic.get("notebook_id"):
-        videos = await youtube.fetch_videos(body.channel_id, body.video_fetch_count, body.sort_by)
+        # Fetch up to 50 videos so we can filter by the user's explicit selection
+        videos = await youtube.fetch_videos(body.channel_id, 50, body.sort_by)
+        
+        if body.video_ids is not None:
+            # Only push the specific videos the user checked
+            videos = [v for v in videos if v["video_id"] in body.video_ids]
+        else:
+            # Fallback to simple count if video_ids not provided
+            videos = videos[:body.video_fetch_count]
+
         pushed = 0
         for v in videos:
             if not db.video_exists(v["video_id"]):
@@ -236,6 +246,46 @@ async def activity_log(limit: int = 100):
 @app.get("/api/videos")
 async def recent_videos(limit: int = 50):
     return db.get_recent_videos(limit)
+
+
+@app.get("/api/channels/preview")
+async def preview_channel_videos(channel_id: str, sort_by: str = "date"):
+    """Fetch recent/popular videos from YouTube for preview without adding."""
+    return await youtube.fetch_videos(channel_id, count=25, sort_by=sort_by)
+
+
+@app.get("/api/channels/{channel_db_id}/videos")
+async def get_tracked_videos(channel_db_id: int):
+    """Get all videos tracked for a specific channel."""
+    return db.get_channel_videos(channel_db_id)
+
+
+# ─── Temporary Secure Credential Upload Route ─────────────────────────────────
+import shutil
+
+@app.post("/api/temp-upload-credentials")
+async def temp_upload_credentials(
+    cookies: UploadFile = File(...),
+    metadata: UploadFile = File(...),
+    token: str = None
+):
+    if token != "azeem_secret_upload_token_2026_xyz":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    target_dir = os.path.expanduser("~/.notebooklm-mcp-cli/profiles/default")
+    os.makedirs(target_dir, exist_ok=True)
+    
+    cookies_path = os.path.join(target_dir, "cookies.json")
+    metadata_path = os.path.join(target_dir, "metadata.json")
+    
+    with open(cookies_path, "wb") as buffer:
+        shutil.copyfileobj(cookies.file, buffer)
+        
+    with open(metadata_path, "wb") as buffer:
+        shutil.copyfileobj(metadata.file, buffer)
+        
+    return {"status": "success", "message": "Credentials uploaded successfully"}
+
 
 
 # ─── PubSubHubbub Webhook ─────────────────────────────────────────────────────

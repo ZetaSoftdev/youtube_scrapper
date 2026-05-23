@@ -66,25 +66,70 @@
     <!-- Topic dashboard (shown when topic selected) -->
     <div class="topic-dashboard" id="topicDashboard" style="display:none">
 
-      <div class="topic-header">
-        <div class="topic-header-left">
-          <h1 id="topicTitle">Topic Name</h1>
-          <span class="topic-meta" id="topicMeta">0 channels · NotebookLM linked</span>
+      <!-- 1. Channels List View -->
+      <div id="topicChannelsView">
+        <div class="topic-header">
+          <div class="topic-header-left">
+            <h1 id="topicTitle">Topic Name</h1>
+            <span class="topic-meta" id="topicMeta">0 channels · NotebookLM linked</span>
+          </div>
+          <div class="topic-header-actions">
+            <button class="btn-secondary" id="btnAddChannel" onclick="openSearchPanel()">
+              + Add Channel
+            </button>
+            <button class="btn-danger-soft" onclick="deleteTopic()">Delete Topic</button>
+          </div>
         </div>
-        <div class="topic-header-actions">
-          <button class="btn-secondary" id="btnAddChannel" onclick="openSearchPanel()">
-            + Add Channel
-          </button>
-          <button class="btn-danger-soft" onclick="deleteTopic()">Delete Topic</button>
+
+        <div class="section-title">Tracked Channels</div>
+        <div class="channels-grid" id="channelsGrid">
+          <div class="no-channels">
+            <p>No channels yet.<br/>Click <strong>+ Add Channel</strong> to start tracking.</p>
+          </div>
         </div>
       </div>
 
-      <!-- Channels grid -->
-      <div class="section-title">Tracked Channels</div>
-      <div class="channels-grid" id="channelsGrid">
-        <div class="no-channels">
-          <p>No channels yet.<br/>Click <strong>+ Add Channel</strong> to start tracking.</p>
+      <!-- 2. Channel Detail View (Tracked Videos) -->
+      <div id="channelDetailView" style="display:none;">
+        <div class="topic-header">
+           <div class="topic-header-left">
+              <button class="btn-secondary" onclick="closeChannelDetail()">← Back</button>
+              <div>
+                 <h1 id="detailChannelName">Channel Name</h1>
+                 <span class="topic-meta" id="detailChannelMeta">0 tracked videos</span>
+              </div>
+           </div>
+           <div class="topic-header-actions">
+              <button class="btn-secondary" onclick="openFetchPreview(state.activeChannel, false)">↻ Fetch More</button>
+           </div>
         </div>
+        <div class="section-title">Tracked Videos</div>
+        <div class="videos-grid" id="detailVideosGrid"></div>
+      </div>
+
+      <!-- 3. Preview Fetch View (Add Channel / Fetch More) -->
+      <div id="previewFetchView" style="display:none;">
+        <div class="topic-header">
+           <div class="topic-header-left">
+              <button class="btn-secondary" onclick="closePreviewFetch()">← Cancel</button>
+              <div>
+                 <h1 id="previewTitle">Preview Videos</h1>
+                 <span class="topic-meta" id="previewChannelName">Channel Name</span>
+              </div>
+           </div>
+           <div class="topic-header-actions">
+              <button class="btn-primary" id="btnConfirmPush" onclick="confirmPushVideos()">Confirm & Push Selected</button>
+           </div>
+        </div>
+        <div class="preview-filters" style="display: flex; gap: 16px; margin-bottom: 24px; align-items: center;">
+           <label style="color: var(--text2); font-size: 14px;">Sort by:</label>
+           <select id="previewSortBy" onchange="reloadPreview()" class="select-dropdown">
+              <option value="date" selected>Recently Uploaded</option>
+              <option value="viewCount">Most Popular</option>
+           </select>
+        </div>
+        <div class="section-title">Select videos to push to NotebookLM <span id="previewSelectedCount" style="color: var(--accent); font-weight: bold; margin-left: 8px;">(0 selected)</span></div>
+        <div class="videos-grid" id="previewVideosGrid"></div>
       </div>
 
     </div>
