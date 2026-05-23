@@ -20,7 +20,10 @@ async function api(method, path, body = null) {
   const fullPath = BASE_PATH + path;
   const opts = {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      "X-API-Key": "default-dev-key"
+    },
   };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(fullPath, opts);
