@@ -24,10 +24,10 @@ def _callback_url() -> str:
 
 async def _push_new_video(channel: dict, video_id: str, title: str, via: str):
     """Save video to DB and push to NotebookLM if not already pushed."""
-    if db.video_exists(video_id):
+    if await db.video_exists(video_id):
         return
 
-    video = db.save_video(channel["id"], video_id, title, detected_via=via)
+    video = await db.save_video(channel["id"], video_id, title, detected_via=via)
     if not video:
         return
 
@@ -37,8 +37,8 @@ async def _push_new_video(channel: dict, video_id: str, title: str, via: str):
     if notebook_id:
         success = await notebooklm.add_source(notebook_id, url)
         if success:
-            db.mark_video_pushed(video_id)
-            db.log_activity(
+            await db.mark_video_pushed(video_id)
+            await db.log_activity(
                 topic_id=channel["topic_id"],
                 channel_name=channel["channel_name"],
                 video_title=title,
@@ -47,7 +47,7 @@ async def _push_new_video(channel: dict, video_id: str, title: str, via: str):
                 message=f"Auto-added via {via}"
             )
         else:
-            db.log_activity(
+            await db.log_activity(
                 topic_id=channel["topic_id"],
                 channel_name=channel["channel_name"],
                 video_title=title,
@@ -63,14 +63,14 @@ async def rss_fallback_poll():
     This is the safety net — catches any videos the webhook may have missed.
     """
     print(f"[Scheduler] RSS fallback poll started at {datetime.utcnow().isoformat()}")
-    channels = db.get_all_tracked_channels()
+    channels = await db.get_all_tracked_channels()
 
     for channel in channels:
         try:
             rss_videos = await youtube.fetch_rss_videos(channel["channel_id"])
             for v in rss_videos:
                 await _push_new_video(channel, v["video_id"], v["title"], via="rss")
-            db.update_last_checked(channel["id"])
+            await db.update_last_checked(channel["id"])
         except Exception as e:
             print(f"[Scheduler] RSS poll error for {channel['channel_name']}: {e}")
 
@@ -84,13 +84,13 @@ async def renew_webhooks():
     """
     print(f"[Scheduler] Renewing PubSubHubbub subscriptions...")
     callback = _callback_url()
-    channels = db.get_all_tracked_channels()
+    channels = await db.get_all_tracked_channels()
 
     for channel in channels:
         try:
             ok = await youtube.subscribe_to_channel(channel["channel_id"], callback)
             if ok:
-                db.update_webhook_status(channel["id"], True)
+                await db.update_webhook_status(channel["id"], True)
         except Exception as e:
             print(f"[Scheduler] Webhook renewal error for {channel['channel_name']}: {e}")
 

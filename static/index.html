@@ -77,7 +77,7 @@
             <button class="btn-secondary" id="btnAddChannel" onclick="openSearchPanel()">
               + Add Channel
             </button>
-            <button class="btn-danger-soft" onclick="deleteTopic()">Delete Topic</button>
+            <button class="btn-danger-soft" onclick="deleteTopic().catch(console.error)">Delete Topic</button>
           </div>
         </div>
 
@@ -100,7 +100,7 @@
               </div>
            </div>
            <div class="topic-header-actions">
-              <button class="btn-secondary" onclick="openFetchPreview(state.activeChannel, false)">↻ Fetch More</button>
+              <button class="btn-secondary" onclick="openFetchPreview(state.activeChannel, false).catch(console.error)">↻ Fetch More</button>
            </div>
         </div>
         <div class="section-title">Tracked Videos</div>
@@ -118,7 +118,7 @@
               </div>
            </div>
            <div class="topic-header-actions">
-              <button class="btn-primary" id="btnConfirmPush" onclick="confirmPushVideos()">Confirm & Push Selected</button>
+              <button class="btn-primary" id="btnConfirmPush" onclick="confirmPushVideos().catch(console.error)">Confirm & Push Selected</button>
            </div>
         </div>
         <div class="preview-filters" style="display: flex; gap: 16px; margin-bottom: 24px; align-items: center;">
@@ -173,7 +173,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('topicModal')">Cancel</button>
-      <button class="btn-primary" id="btnCreateTopic" onclick="createTopic()">Create Topic</button>
+      <button class="btn-primary" id="btnCreateTopic" onclick="createTopic().catch(console.error)">Create Topic</button>
     </div>
   </div>
 </div>
@@ -213,7 +213,7 @@
           <option value="25">25</option>
         </select>
       </div>
-      <button class="btn-primary" onclick="searchChannels()" id="btnSearch">Search</button>
+      <button class="btn-primary" onclick="searchChannels().catch(console.error)" id="btnSearch">Search</button>
     </div>
 
     <div id="searchResults" class="search-results"></div>
@@ -228,7 +228,7 @@
       <input type="text" id="channelUrlInput"
              placeholder="https://www.youtube.com/@channelname"
              autocomplete="off" />
-      <button class="btn-primary" onclick="resolveChannelUrl()" id="btnResolve">Resolve</button>
+      <button class="btn-primary" onclick="resolveChannelUrl().catch(console.error)" id="btnResolve">Resolve</button>
     </div>
     <div id="urlResult" class="search-results"></div>
   </div>
@@ -283,7 +283,7 @@
 
   <div class="config-footer">
     <button class="btn-secondary" onclick="closeConfigPanel()">Cancel</button>
-    <button class="btn-primary" id="btnConfirmAdd" onclick="confirmAddChannel()">
+    <button class="btn-primary" id="btnConfirmAdd" onclick="confirmAddChannel().catch(console.error)">
       <span id="btnConfirmText">Add Channel & Fetch</span>
     </button>
   </div>

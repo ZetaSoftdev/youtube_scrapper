@@ -5,7 +5,7 @@ Handles: channel search, video fetching, PubSubHubbub webhook subscription.
 
 import os
 import httpx
-import xml.etree.ElementTree as ET
+import re
 from typing import Optional
 
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
@@ -268,33 +268,36 @@ async def unsubscribe_from_channel(channel_id: str, callback_url: str) -> bool:
 
 
 def parse_webhook_payload(xml_body: bytes) -> Optional[dict]:
-    """
+    \"\"\"
     Parse the Atom XML payload YouTube sends when a new video is uploaded.
     Returns {channel_id, video_id, title} or None if unparseable.
-    """
+    \"\"\"
     try:
-        ns = {
-            "atom": "http://www.w3.org/2005/Atom",
-            "yt": "http://www.youtube.com/xml/schemas/2015",
-        }
-        root = ET.fromstring(xml_body)
-        entry = root.find("atom:entry", ns)
-        if entry is None:
-            return None
+        xml_str = xml_body.decode("utf-8", errors="ignore")
+        video_id_match = re.search(r"<yt:videoId>(.*?)</yt:videoId>", xml_str)
+        channel_id_match = re.search(r"<yt:channelId>(.*?)</yt:channelId>", xml_str)
+        
+        # We want the title inside <entry>, so we first extract <entry>...</entry>
+        entry_match = re.search(r"<entry>.*?</entry>", xml_str, re.DOTALL)
+        if not entry_match:
+            # Maybe there's a namespace on entry
+            entry_match = re.search(r"<[a-zA-Z0-9:]*?entry.*?>.*?</[a-zA-Z0-9:]*?entry>", xml_str, re.DOTALL)
 
-        video_id_el = entry.find("yt:videoId", ns)
-        channel_id_el = entry.find("yt:channelId", ns)
-        title_el = entry.find("atom:title", ns)
+        title = ""
+        if entry_match:
+            entry_str = entry_match.group(0)
+            title_match = re.search(r"<title>(.*?)</title>", entry_str)
+            if title_match:
+                title = title_match.group(1)
 
-        if video_id_el is None or channel_id_el is None:
-            return None
-
-        return {
-            "video_id": video_id_el.text,
-            "channel_id": channel_id_el.text,
-            "title": title_el.text if title_el is not None else "",
-        }
-    except ET.ParseError:
+        if video_id_match and channel_id_match:
+            return {
+                "video_id": video_id_match.group(1),
+                "channel_id": channel_id_match.group(1),
+                "title": title
+            }
+        return None
+    except Exception:
         return None
 
 
@@ -317,22 +320,23 @@ async def fetch_rss_videos(channel_id: str) -> list[dict]:
 
     videos = []
     try:
-        ns = {
-            "atom": "http://www.w3.org/2005/Atom",
-            "yt": "http://www.youtube.com/xml/schemas/2015",
-            "media": "http://search.yahoo.com/mrss/",
-        }
-        root = ET.fromstring(resp.content)
-        for entry in root.findall("atom:entry", ns):
-            vid_id_el = entry.find("yt:videoId", ns)
-            title_el = entry.find("atom:title", ns)
-            if vid_id_el is None:
-                continue
-            videos.append({
-                "video_id": vid_id_el.text,
-                "title": title_el.text if title_el is not None else "",
-            })
-    except ET.ParseError:
+        xml_str = resp.content.decode("utf-8", errors="ignore")
+        # Find all entry elements
+        entries = re.findall(r"(<[a-zA-Z0-9:]*?entry.*?>.*?</[a-zA-Z0-9:]*?entry>)", xml_str, re.DOTALL)
+        if not entries:
+            # Fallback if the regex missed namespaces
+            entries = re.findall(r"(<entry>.*?</entry>)", xml_str, re.DOTALL)
+            
+        for entry_str in entries:
+            vid_id_match = re.search(r"<yt:videoId>(.*?)</yt:videoId>", entry_str)
+            title_match = re.search(r"<title>(.*?)</title>", entry_str)
+            
+            if vid_id_match:
+                videos.append({
+                    "video_id": vid_id_match.group(1),
+                    "title": title_match.group(1) if title_match else "",
+                })
+    except Exception:
         pass
 
     return videos

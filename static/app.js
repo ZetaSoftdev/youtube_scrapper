@@ -80,7 +80,10 @@ function renderTopicsList() {
   }
   el.innerHTML = state.topics.map(t => `
     <div class="topic-item ${state.activeTopic?.id === t.id ? "active" : ""}"
-         onclick="selectTopic(${JSON.stringify(t).replace(/"/g, "&quot;")})"
+         role="button" tabindex="0"
+         aria-label="Select topic ${esc(t.name)}"
+         onclick="selectTopic(${JSON.stringify(t).replace(/"/g, "&quot;")}).catch(console.error)"
+         onkeydown="if(event.key==='Enter'||event.key===' ') selectTopic(${JSON.stringify(t).replace(/"/g, "&quot;")}).catch(console.error)"
          id="topicItem_${t.id}">
       <span class="topic-item-name">${esc(t.name)}</span>
       <span class="topic-item-count">${t.channel_count ?? 0}</span>
@@ -95,6 +98,10 @@ async function selectTopic(topic) {
   document.getElementById("emptyState").style.display = "none";
   document.getElementById("topicDashboard").style.display = "block";
   document.getElementById("topicTitle").textContent = topic.name;
+  
+  const grid = document.getElementById("channelsGrid");
+  if (grid) grid.innerHTML = `<div class="loading-spinner"></div>`;
+  
   await loadChannels();
 }
 
@@ -170,7 +177,10 @@ function renderChannels() {
     return;
   }
   grid.innerHTML = state.channels.map(c => `
-    <div class="channel-card" id="channelCard_${c.id}" style="cursor:pointer" onclick="openConfigPanel(${JSON.stringify(c).replace(/"/g, "&quot;")})">
+    <div class="channel-card" id="channelCard_${c.id}" style="cursor:pointer"
+         role="button" tabindex="0" aria-label="Open channel details for ${esc(c.channel_name)}"
+         onclick="openChannelDetail(${c.id}, '${esc(c.channel_name)}').catch(console.error)"
+         onkeydown="if(event.key==='Enter'||event.key===' ') openChannelDetail(${c.id}, '${esc(c.channel_name)}').catch(console.error)">
       <div class="channel-card-top">
         <img class="channel-thumb" src="${c.thumbnail_url || ''}" alt=""
              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%23333%22/><text x=%2250%%22 y=%2255%%22 text-anchor=%22middle%22 fill=%22%23888%22 font-size=%2218%22>▶</text></svg>'" />
@@ -189,7 +199,7 @@ function renderChannels() {
         </span>
       </div>
       <div class="channel-card-actions">
-        <button class="btn-remove-sm" onclick="event.stopPropagation(); removeChannel(${c.id}, '${esc(c.channel_name)}')">✕ Remove</button>
+        <button class="btn-remove-sm" onclick="event.stopPropagation(); removeChannel(${c.id}, '${esc(c.channel_name)}').catch(console.error)">✕ Remove</button>
       </div>
     </div>
   `).join("");
@@ -285,7 +295,7 @@ function renderSearchResults(results, container) {
         </div>
         ${isAdded
           ? `<span class="result-add added-btn">✓ Added</span>`
-          : `<button class="result-add" onclick="openFetchPreview(${JSON.stringify(ch).replace(/"/g, "&quot;")}, true)">Select Videos...</button>`
+          : `<button class="result-add" onclick="openFetchPreview(${JSON.stringify(ch).replace(/"/g, "&quot;")}, true).catch(console.error)">Select Videos...</button>`
         }
       </div>
     `;
@@ -559,7 +569,7 @@ function closePreviewFetch() {
 
 async function reloadPreview() {
   const grid = document.getElementById("previewVideosGrid");
-  const count = document.getElementById("previewFetchCount")?.value || 25;
+  const count = 25;
   const sort = document.getElementById("previewSortBy").value;
   
   grid.innerHTML = `<div style="grid-column: 1/-1; padding: 40px; text-align: center;"><div class="loading-spinner" style="display:inline-block"></div><div style="margin-top:16px; color:var(--text2)">Fetching videos from YouTube...</div></div>`;
@@ -590,8 +600,11 @@ function renderPreviewGrid() {
   grid.innerHTML = previewState.videos.map(v => {
     const isSel = previewState.selectedIds.has(v.video_id);
     return `
-      <div class="video-card ${isSel ? 'selected' : ''}" onclick="togglePreviewVideo('${v.video_id}')">
-        <input type="checkbox" class="video-checkbox" ${isSel ? 'checked' : ''} onclick="event.stopPropagation(); togglePreviewVideo('${v.video_id}')" />
+      <div class="video-card ${isSel ? 'selected' : ''}" 
+           role="button" tabindex="0" aria-label="Select video ${esc(v.title)}"
+           onclick="togglePreviewVideo('${v.video_id}')"
+           onkeydown="if(event.key==='Enter'||event.key===' ') togglePreviewVideo('${v.video_id}')">
+        <input type="checkbox" class="video-checkbox" ${isSel ? 'checked' : ''} tabindex="-1" onclick="event.stopPropagation(); togglePreviewVideo('${v.video_id}')" />
         <img class="video-thumb" src="${v.thumbnail || `https://i.ytimg.com/vi/${v.video_id}/mqdefault.jpg`}" onerror="this.style.background='#222'" />
         <div class="video-info">
           <div class="video-title" title="${esc(v.title)}">${esc(v.title)}</div>

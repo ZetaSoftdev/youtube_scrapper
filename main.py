@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv
+from fastapi import BackgroundTasks
 
 load_dotenv()
 
@@ -23,11 +24,23 @@ from scheduler import start_scheduler, _callback_url, _push_new_video
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db.init_db()
+    await db.init_db()
     start_scheduler()
     yield
 
 app = FastAPI(title="YouTube Intelligence Feed", lifespan=lifespan)
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        api_key = os.getenv("API_KEY", "default-dev-key")
+        req_key = request.headers.get("X-API-Key")
+        # To avoid breaking frontend if it doesn't send key yet, we can check it
+        # Actually, let's just enforce it and I will update frontend.
+        if req_key != api_key:
+            return Response(content="Unauthorized", status_code=401)
+    return await call_next(request)
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
@@ -59,17 +72,17 @@ class TopicCreate(BaseModel):
 
 @app.get("/api/topics")
 async def list_topics():
-    return db.get_topics()
+    return await db.get_topics()
 
 
 @app.post("/api/topics", status_code=201)
 async def create_topic(body: TopicCreate):
-    topic = db.create_topic(body.name, body.description or "")
+    topic = await db.create_topic(body.name, body.description or "")
 
     # Create a linked NotebookLM notebook
     notebook_id = await notebooklm.create_notebook(body.name)
     if notebook_id:
-        db.update_topic_notebook(topic["id"], notebook_id, notebook_id)
+        await db.update_topic_notebook(topic["id"], notebook_id, notebook_id)
         topic["notebook_id"] = notebook_id
 
     return topic
@@ -77,10 +90,10 @@ async def create_topic(body: TopicCreate):
 
 @app.delete("/api/topics/{topic_id}", status_code=204)
 async def delete_topic(topic_id: int):
-    topic = db.get_topic(topic_id)
+    topic = await db.get_topic(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
-    db.delete_topic(topic_id)
+    await db.delete_topic(topic_id)
     return Response(status_code=204)
 
 
@@ -113,7 +126,7 @@ async def resolve_channel_url(url: str):
 @app.get("/api/channels/suggest")
 async def suggest_channels(channel_id: str, topic_id: int):
     """Suggest similar channels after adding one."""
-    existing = db.get_channels(topic_id)
+    existing = await db.get_channels(topic_id)
     existing_ids = [c["channel_id"] for c in existing]
     suggestions = await youtube.suggest_similar_channels(channel_id, existing_ids)
     return suggestions
@@ -134,17 +147,17 @@ class ChannelAdd(BaseModel):
 
 @app.get("/api/topics/{topic_id}/channels")
 async def list_channels(topic_id: int):
-    return db.get_channels(topic_id)
+    return await db.get_channels(topic_id)
 
 
 @app.post("/api/channels", status_code=201)
 async def add_channel(body: ChannelAdd):
-    topic = db.get_topic(body.topic_id)
+    topic = await db.get_topic(body.topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
 
     # Add to DB
-    channel = db.add_channel(
+    channel = await db.add_channel(
         topic_id=body.topic_id,
         channel_id=body.channel_id,
         channel_name=body.channel_name,
@@ -168,12 +181,12 @@ async def add_channel(body: ChannelAdd):
 
         pushed = 0
         for v in videos:
-            if not db.video_exists(v["video_id"]):
-                saved = db.save_video(channel["id"], v["video_id"], v["title"], "manual")
+            if not await db.video_exists(v["video_id"]):
+                saved = await db.save_video(channel["id"], v["video_id"], v["title"], "manual")
                 if saved:
                     ok = await notebooklm.add_source(topic["notebook_id"], v["video_url"])
                     if ok:
-                        db.mark_video_pushed(v["video_id"])
+                        await db.mark_video_pushed(v["video_id"])
                         pushed += 1
         channel["videos_pushed"] = pushed
 
@@ -181,7 +194,7 @@ async def add_channel(body: ChannelAdd):
     callback = _callback_url()
     if callback and "your-server" not in callback:
         ok = await youtube.subscribe_to_channel(body.channel_id, callback)
-        db.update_webhook_status(channel["id"], ok)
+        await db.update_webhook_status(channel["id"], ok)
         channel["webhook_subscribed"] = ok
 
     return channel
@@ -189,7 +202,7 @@ async def add_channel(body: ChannelAdd):
 
 @app.delete("/api/channels/{channel_db_id}", status_code=204)
 async def remove_channel(channel_db_id: int):
-    channels = db.get_all_tracked_channels()
+    channels = await db.get_all_tracked_channels()
     channel = next((c for c in channels if c["id"] == channel_db_id), None)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -199,7 +212,7 @@ async def remove_channel(channel_db_id: int):
     if callback:
         await youtube.unsubscribe_from_channel(channel["channel_id"], callback)
 
-    db.delete_channel(channel_db_id)
+    await db.delete_channel(channel_db_id)
     return Response(status_code=204)
 
 
@@ -213,7 +226,7 @@ class FetchRequest(BaseModel):
 @app.post("/api/channels/{channel_db_id}/fetch")
 async def manual_fetch(channel_db_id: int, body: FetchRequest):
     """Manually trigger a video fetch for a channel and push to NotebookLM."""
-    channels = db.get_all_tracked_channels()
+    channels = await db.get_all_tracked_channels()
     channel = next((c for c in channels if c["id"] == channel_db_id), None)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -223,14 +236,14 @@ async def manual_fetch(channel_db_id: int, body: FetchRequest):
     skipped = 0
 
     for v in videos:
-        if db.video_exists(v["video_id"]):
+        if await db.video_exists(v["video_id"]):
             skipped += 1
             continue
-        saved = db.save_video(channel["id"], v["video_id"], v["title"], "manual")
+        saved = await db.save_video(channel["id"], v["video_id"], v["title"], "manual")
         if saved and channel.get("notebook_id"):
             ok = await notebooklm.add_source(channel["notebook_id"], v["video_url"])
             if ok:
-                db.mark_video_pushed(v["video_id"])
+                await db.mark_video_pushed(v["video_id"])
                 pushed += 1
 
     return {"pushed": pushed, "skipped": skipped, "total": len(videos)}
@@ -240,12 +253,12 @@ async def manual_fetch(channel_db_id: int, body: FetchRequest):
 
 @app.get("/api/activity")
 async def activity_log(limit: int = 100):
-    return db.get_activity_log(limit)
+    return await db.get_activity_log(limit)
 
 
 @app.get("/api/videos")
 async def recent_videos(limit: int = 50):
-    return db.get_recent_videos(limit)
+    return await db.get_recent_videos(limit)
 
 
 @app.get("/api/channels/preview")
@@ -257,7 +270,7 @@ async def preview_channel_videos(channel_id: str, sort_by: str = "date"):
 @app.get("/api/channels/{channel_db_id}/videos")
 async def get_tracked_videos(channel_db_id: int):
     """Get all videos tracked for a specific channel."""
-    return db.get_channel_videos(channel_db_id)
+    return await db.get_channel_videos(channel_db_id)
 
 
 
@@ -279,16 +292,16 @@ async def webhook_verify(
         # Update webhook status in DB based on the topic URL
         if hub_topic and "channel_id=" in hub_topic:
             yt_channel_id = hub_topic.split("channel_id=")[-1]
-            channel = db.get_channel_by_yt_id(yt_channel_id)
+            channel = await db.get_channel_by_yt_id(yt_channel_id)
             if channel:
-                db.update_webhook_status(channel["id"], True)
+                await db.update_webhook_status(channel["id"], True)
         return Response(content=hub_challenge, media_type="text/plain")
 
     return Response(status_code=200)
 
 
 @app.post("/webhook/youtube")
-async def webhook_receive(request: Request):
+async def webhook_receive(request: Request, background_tasks: BackgroundTasks):
     """
     Receive new video notification from YouTube's PubSubHubbub hub.
     Parses the Atom XML payload, extracts video ID, pushes to NotebookLM.
@@ -297,20 +310,17 @@ async def webhook_receive(request: Request):
     parsed = youtube.parse_webhook_payload(body)
 
     if not parsed:
-        # Not a parseable video notification — ignore silently
         return Response(status_code=200)
 
     yt_channel_id = parsed["channel_id"]
     video_id = parsed["video_id"]
     title = parsed["title"]
 
-    channel = db.get_channel_by_yt_id(yt_channel_id)
+    channel = await db.get_channel_by_yt_id(yt_channel_id)
     if not channel:
-        # Notification for a channel we don't track — ignore
         return Response(status_code=200)
 
-    # Push to NotebookLM in background (don't block the webhook response)
-    import asyncio
-    asyncio.create_task(_push_new_video(channel, video_id, title, via="webhook"))
+    # Push to NotebookLM in background using FastAPI BackgroundTasks
+    background_tasks.add_task(_push_new_video, channel, video_id, title, "webhook")
 
     return Response(status_code=200)
