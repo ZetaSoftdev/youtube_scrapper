@@ -14,13 +14,16 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ─── API Helper ──────────────────────────────────────────────────────────────
+const BASE_PATH = window.location.pathname.replace(/\/$/, '');
+
 async function api(method, path, body = null) {
+  const fullPath = BASE_PATH + path;
   const opts = {
     method,
     headers: { "Content-Type": "application/json" },
   };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(path, opts);
+  const res = await fetch(fullPath, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `HTTP ${res.status}`);
